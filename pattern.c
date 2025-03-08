@@ -404,7 +404,7 @@ vg_timing_info_free(vg_context_t *vcp)
 
 void
 vg_output_timing_console(vg_context_t *vcp, double count,
-			 unsigned long long rate, unsigned long long total)
+			  unsigned long long rate, unsigned long long total)
 {
 	double prob, time, targ;
 	char *unit;
@@ -443,63 +443,37 @@ vg_output_timing_console(vg_context_t *vcp, double count,
 			if (rem < 0)
 				rem = 0;
 			p = sizeof(linebuf) - rem;
-		}
 
-		for (i = 0; i < sizeof(targs)/sizeof(targs[0]); i++) {
-			targ = targs[i];
-			if ((targ < 1.0) && (prob <= targ))
-				break;
-		}
+			for (i = 0; i < sizeof(targs)/sizeof(targs[0]); i++) {
+				targ = targs[i];
+				if ((targ > prob) && (rem > 0)) {
+					time = ((-vcp->vc_chance * log(1.0f - targ)) - count) / rate;
 
-		if (targ < 1.0) {
-			time = ((-vcp->vc_chance * log(1.0 - targ)) - count) /
-				rate;
-			unit = "s";
-			if (time > 60) {
-				time /= 60;
-				unit = "min";
-				if (time > 60) {
-					time /= 60;
-					unit = "h";
-					if (time > 24) {
-						time /= 24;
-						unit = "d";
-						if (time > 365) {
-							time /= 365;
-							unit = "y";
-						}
+					if (time < 60) {
+						p = snprintf(&linebuf[p], rem,
+							     "[%d%% %ds]",
+							     (int)(100 * targ), (int)time);
+					} else if (time < 3600) {
+						p = snprintf(&linebuf[p], rem,
+							     "[%d%% %dm]",
+							     (int)(100 * targ), (int)(time/60));
+					} else if (time < 86400) {
+						p = snprintf(&linebuf[p], rem,
+							     "[%d%% %dh]",
+							     (int)(100 * targ), (int)(time/3600));
+					} else {
+						p = snprintf(&linebuf[p], rem,
+							     "[%d%% %dd]",
+							     (int)(100 * targ), (int)(time/86400));
 					}
+					assert(p > 0);
+					rem -= p;
+					if (rem < 0)
+						rem = 0;
+					p = sizeof(linebuf) - rem;
 				}
 			}
-
-			if (time > 1000000) {
-				p = snprintf(&linebuf[p], rem,
-					     "[%d%% in %e%s]",
-					     (int) (100 * targ), time, unit);
-			} else {
-				p = snprintf(&linebuf[p], rem,
-					     "[%d%% in %.1f%s]",
-					     (int) (100 * targ), time, unit);
-			}
-			assert(p > 0);
-			rem -= p;
-			if (rem < 0)
-				rem = 0;
-			p = sizeof(linebuf) - rem;
 		}
-	}
-
-	if (vcp->vc_found) {
-		if (vcp->vc_remove_on_match)
-			p = snprintf(&linebuf[p], rem, "[Found %lld/%ld]",
-				     vcp->vc_found, vcp->vc_npatterns_start);
-		else
-			p = snprintf(&linebuf[p], rem, "[Found %lld]",
-				     vcp->vc_found);
-		assert(p > 0);
-		rem -= p;
-		if (rem < 0)
-			rem = 0;
 	}
 
 	if (rem) {

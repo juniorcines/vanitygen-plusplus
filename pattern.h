@@ -142,6 +142,11 @@ struct _vg_context_s {
 	vg_output_error_func_t		vc_output_error;
 	vg_output_match_func_t		vc_output_match;
 	vg_output_timing_func_t		vc_output_timing;
+
+	// Nuevos campos para almacenar resultados
+	char			*vc_result_addr;
+	char			*vc_result_privkey;
+	char			*vc_result_pattern;
 };
 
 
@@ -167,7 +172,7 @@ extern vg_context_t *vg_regex_context_new(int addrtype, int privtype);
 
 /* Utility functions */
 extern int vg_output_timing(vg_context_t *vcp, int cycle, struct timeval *last);
-extern void vg_output_match_console(vg_context_t *vcp, EC_KEY *pkey,
+extern void __attribute__((weak)) vg_output_match_console(vg_context_t *vcp, EC_KEY *pkey,
 				    const char *pattern);
 extern void vg_output_timing_console(vg_context_t *vcp, double count,
 				     unsigned long long rate,

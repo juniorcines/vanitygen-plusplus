@@ -59,6 +59,21 @@ ETH Address: 0x999999188b45BcfA499Ff1bDc041eE21cc890B16
 ETH Privkey: 0xdb3813534c0c9595f9b8b35d6f544827065b33930ae42c38a9d7ce41a1d74669
 ```
 
+Generate BTC vanity address and save to MongoDB:
+```
+$ ./vanitygen++ -D "mongodb://user:password@host:27017" -B "database_name" -N "collection_name" 1Love
+Difficulty: 4476342
+[1.35 Mkey/s][total 885248][Prob 17.9%][50% in 1.6s]
+Pattern: 1Love
+Address: 1Love1ZYE2nzXGibw9rtMCPq2tmg2qLtfx
+Privkey: 5KDnavUAswEzQDYY1sAwKPVMUZhZh5hhyS2MnZs8q6SEsQMk2k4
+```
+
+The MongoDB integration allows you to automatically store generated addresses in a database. Use the following options:
+- `-D` : MongoDB connection URI (e.g. "mongodb://user:password@host:27017")
+- `-B` : Database name
+- `-N` : Collection name
+
 If you have OpenCL-compatible GPU, please use `oclvanitygen++`, it's faster.
 
 # Build

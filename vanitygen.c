@@ -43,6 +43,10 @@ int TRXFlag = 0;
 
 const char *version = VANITYGEN_VERSION;
 
+#include "mongo_utils.h"
+
+// Agregar variable global para el contexto de MongoDB
+mongo_context_t mongo_ctx = {0};
 
 /*
  * Address search thread main loop
@@ -349,7 +353,12 @@ usage(const char *name)
 "-Z <prefix>   Private key prefix in hex (1Address.io Dapp front-running protection)\n"
 "-l <nbits>    Specify number of bits in prefix, only relevant when -Z is specified\n"
 "-z            Format output of matches in CSV(disables verbose mode)\n"
-"              Output as [COIN],[PREFIX],[ADDRESS],[PRIVKEY]\n",
+"              Output as [COIN],[PREFIX],[ADDRESS],[PRIVKEY]\n"
+"\n"
+"MongoDB Options:\n"
+"-D <uri>      MongoDB connection URI\n"
+"-B <db>       MongoDB database name\n"
+"-N <coll>     MongoDB collection name\n",
 version, name);
 }
 
@@ -397,7 +406,12 @@ main(int argc, char **argv)
 	const char *coin = "BTC";
 	char *bech32_hrp = "bc";
 
-	while ((opt = getopt(argc, argv, "vqnrik1ezE:P:C:X:Y:F:t:h?f:o:s:Z:a:l:")) != -1) {
+	const char *mongo_uri = NULL;
+	const char *mongo_db = NULL;
+	const char *mongo_collection = NULL;
+	int use_mongodb = 0;
+
+	while ((opt = getopt(argc, argv, "vqnrik1ezE:P:C:X:Y:F:t:h?f:o:s:Z:a:l:D:B:N:")) != -1) {
 		switch (opt) {
 		case 'c':
 		        compressed = 1;
@@ -611,6 +625,16 @@ main(int argc, char **argv)
 				fprintf(stderr, "Invalid number of bits `%s` specified\n", optarg);
 				return 1;
 			}
+			break;
+		case 'D':
+			mongo_uri = optarg;
+			use_mongodb = 1;
+			break;
+		case 'B':
+			mongo_db = optarg;
+			break;
+		case 'N':
+			mongo_collection = optarg;
 			break;
 		default:
 			usage(argv[0]);
@@ -975,5 +999,84 @@ main(int argc, char **argv)
 
 	if (!start_threads(vcp, nthreads))
 		return 1;
+
+	if (use_mongodb) {
+		if (!mongo_init(&mongo_ctx, mongo_uri, mongo_db, mongo_collection)) {
+			fprintf(stderr, "Warning: Failed to initialize MongoDB connection\n");
+		} else {
+			// Obtener los valores almacenados en el contexto
+			const char *addr = vcp->vc_result_addr;
+			const char *priv = vcp->vc_result_privkey;
+			const char *pat = vcp->vc_result_pattern;
+
+			if (addr && priv && pat) {
+				if (!mongo_save_address(&mongo_ctx, addr, priv, pat)) {
+					fprintf(stderr, "Warning: Failed to save address to MongoDB\n");
+				} else {
+					//printf("Dirección guardada exitosamente en MongoDB\n");
+				}
+			} else {
+				fprintf(stderr, "Warning: No se encontraron datos válidos para guardar\n");
+			}
+			mongo_cleanup(&mongo_ctx);
+		}
+	}
+
 	return 0;
+}
+
+void
+vg_output_match_console(vg_context_t *vcp, EC_KEY *pkey, const char *pattern)
+{
+	char *pkstr, *addrstr;
+	char privkey_buf[128];
+	char addr_buf[128];
+	const EC_GROUP *pgroup;
+	const EC_POINT *ppnt;
+	
+	pgroup = EC_KEY_get0_group(pkey);
+	ppnt = EC_KEY_get0_public_key(pkey);
+	
+	if (vcp->vc_compressed) {
+		vg_encode_privkey_compressed(pkey, vcp->vc_privtype, privkey_buf);
+		vg_encode_address_compressed(ppnt, pgroup, vcp->vc_addrtype, addr_buf);
+	} else {
+		vg_encode_privkey(pkey, vcp->vc_privtype, privkey_buf);
+		vg_encode_address(ppnt, pgroup, vcp->vc_addrtype, vcp->vc_format, addr_buf);
+	}
+
+	pkstr = strdup(privkey_buf);
+	addrstr = strdup(addr_buf);
+
+	// Guardar los valores encontrados en el contexto
+	vcp->vc_result_addr = strdup(addrstr);
+	vcp->vc_result_privkey = strdup(pkstr);
+	vcp->vc_result_pattern = strdup(pattern);
+
+	if (vcp->vc_verbose > 0) {
+		printf("\r%79s\r", "");
+		printf("Pattern: %s\n", pattern);
+	}
+	printf("Address: %s\n", addrstr);
+	printf("Privkey: %s\n", pkstr);
+	if (vcp->vc_result_file) {
+		FILE *fp = fopen(vcp->vc_result_file, "a");
+		if (!fp) {
+			fprintf(stderr,
+				"ERROR: could not open result file: %s\n",
+				strerror(errno));
+			goto out;
+		}
+		fprintf(fp,
+			"Pattern: %s\n"
+			"Address: %s\n"
+			"Privkey: %s\n",
+			pattern, addrstr, pkstr);
+		fclose(fp);
+	}
+out:
+	if (pkstr)
+		free(pkstr);
+	if (addrstr)
+		free(addrstr);
 }

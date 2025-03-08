@@ -14,13 +14,16 @@
 # brew install openssl@3
 # brew install pcre
 
-LIBS=-lpcre -lcrypto -lm -lpthread
-CFLAGS=-ggdb -O3 -Wall -Wno-deprecated
-# CFLAGS=-ggdb -Wall -Wno-deprecated -fsanitize=address
+MONGO_CFLAGS=$(shell pkg-config --cflags libmongoc-1.0 libbson-1.0)
+MONGO_LIBS=$(shell pkg-config --libs libmongoc-1.0 libbson-1.0)
+
+LIBS=-lpcre -lcrypto -lm -lpthread $(MONGO_LIBS)
+CFLAGS=-O3 -g -Wall -Wextra -Wno-pointer-sign -Wno-unused-function $(MONGO_CFLAGS)
+# CFLAGS=-ggdb -Wall -Wno-deprecated
 # CFLAGS=-ggdb -O3 -Wall -I /usr/local/cuda-10.2/include/
 
 OBJS=vanitygen.o oclvanitygen.o oclvanityminer.o oclengine.o keyconv.o pattern.o util.o groestl.o sha3.o ed25519.o \
-     stellar.o base32.o crc16.o bech32.o segwit_addr.o
+     stellar.o base32.o crc16.o bech32.o segwit_addr.o mongo_utils.o
 PROGS=vanitygen++ keyconv oclvanitygen++ oclvanityminer
 
 PLATFORM=$(shell uname -s)
@@ -42,7 +45,7 @@ most: vanitygen++ keyconv
 
 all: $(PROGS)
 
-vanitygen++: vanitygen.o pattern.o util.o groestl.o sha3.o ed25519.o stellar.o base32.o crc16.o simplevanitygen.o bech32.o segwit_addr.o
+vanitygen++: vanitygen.o pattern.o util.o groestl.o sha3.o ed25519.o stellar.o base32.o crc16.o simplevanitygen.o bech32.o segwit_addr.o mongo_utils.o
 	$(CC) $^ -o $@ $(CFLAGS) $(LIBS)
 
 oclvanitygen++: oclvanitygen.o oclengine.o pattern.o util.o groestl.o sha3.o
