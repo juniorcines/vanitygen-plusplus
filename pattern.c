@@ -20,7 +20,7 @@
 #include <string.h>
 #include <math.h>
 #include <assert.h>
-
+#include <time.h>
 #include <pthread.h>
 
 #include <openssl/sha.h>
@@ -36,6 +36,14 @@
 #include "util.h"
 #include "avl.h"
 #include "sha3.h"
+#include "mongo_utils.h"
+
+// Variables globales para MongoDB - declaradas como extern
+extern const char *mongo_uri;
+extern const char *mongo_db;
+extern const char *mongo_collection;
+extern int use_mongodb;
+extern mongo_context_t mongo_ctx;
 
 /*
  * Common code for execution helper
@@ -487,118 +495,42 @@ vg_output_timing_console(vg_context_t *vcp, double count,
 void
 vg_output_match_console(vg_context_t *vcp, EC_KEY *pkey, const char *pattern)
 {
-	unsigned char key_buf[512], *pend;
-	char addr_buf[64], addr2_buf[64];
-	char privkey_buf[VG_PROTKEY_MAX_B58];
-	const char *keytype = "Privkey";
-	int len;
-	int isscript = (vcp->vc_format == VCF_SCRIPT);
-
-	EC_POINT *ppnt;
-	int free_ppnt = 0;
-	if (vcp->vc_pubkey_base) {
-		ppnt = EC_POINT_new(EC_KEY_get0_group(pkey));
-		EC_POINT_copy(ppnt, EC_KEY_get0_public_key(pkey));
-		EC_POINT_add(EC_KEY_get0_group(pkey),
-			     ppnt,
-			     ppnt,
-			     vcp->vc_pubkey_base,
-			     NULL);
-		free_ppnt = 1;
-		keytype = "PrivkeyPart";
+	char *pkstr, *addrstr;
+	char privkey_buf[128];
+	char addr_buf[128];
+	const EC_GROUP *pgroup;
+	const EC_POINT *ppnt;
+	
+	pgroup = EC_KEY_get0_group(pkey);
+	ppnt = EC_KEY_get0_public_key(pkey);
+	
+	if (vcp->vc_compressed) {
+		vg_encode_privkey_compressed(pkey, vcp->vc_privtype, privkey_buf);
+		vg_encode_address_compressed(ppnt, pgroup, vcp->vc_addrtype, addr_buf);
 	} else {
-		ppnt = (EC_POINT *) EC_KEY_get0_public_key(pkey);
+		vg_encode_privkey(pkey, vcp->vc_privtype, privkey_buf);
+		vg_encode_address(ppnt, pgroup, vcp->vc_addrtype, vcp->vc_format, addr_buf);
 	}
 
-	assert(EC_KEY_check_key(pkey));
-	if (vcp->vc_compressed)
-		vg_encode_address_compressed(ppnt,
-				  EC_KEY_get0_group(pkey),
-				  vcp->vc_pubkeytype, addr_buf);
-	else
-		vg_encode_address(ppnt,
-				  EC_KEY_get0_group(pkey),
-				  vcp->vc_pubkeytype, vcp->vc_format, addr_buf);
-	if (isscript)
-		vg_encode_script_address(ppnt,
-					 EC_KEY_get0_group(pkey),
-					 vcp->vc_addrtype, addr2_buf);
-
-	if (vcp->vc_key_protect_pass) {
-		len = vg_protect_encode_privkey(privkey_buf,
-						pkey, vcp->vc_privtype,
-						VG_PROTKEY_DEFAULT,
-						vcp->vc_key_protect_pass);
-		if (len) {
-			keytype = "Protkey";
-		} else {
-			fprintf(stderr,
-				"ERROR: could not password-protect key\n");
-			vcp->vc_key_protect_pass = NULL;
-		}
-	}
-	if (!vcp->vc_key_protect_pass) {
-		if (vcp->vc_compressed)
-			vg_encode_privkey_compressed(pkey, vcp->vc_privtype, privkey_buf);
-		else
-			vg_encode_privkey(pkey, vcp->vc_privtype, privkey_buf);
-	}
-
-	int tickerlength=0;
-	if (vcp->vc_csv) {
-			if (strcmp(ticker, "")==0) {
-				strcpy(ticker, "BTC ");
-			}
-			tickerlength=(strlen(ticker)-1);
-	}
-
-	if (!vcp->vc_result_file || (vcp->vc_verbose > 0)) {
-		if (vcp->vc_csv) {
-			printf("\r%79s\r%.*s,%s,", "", tickerlength, ticker, pattern);
-		}
-		else {
-			printf("\r%79s\r%sPattern: %s\n", "", ticker, pattern);
-		}
-	}
+	pkstr = strdup(privkey_buf);
+	addrstr = strdup(addr_buf);
 
 	if (vcp->vc_verbose > 0) {
-		if (vcp->vc_verbose > 1&&!(vcp->vc_csv)) {
-			pend = key_buf;
-			len = i2o_ECPublicKey(pkey, &pend);
-			printf("Pubkey (hex): ");
-			dumphex(key_buf, len);
-			printf("Privkey (hex): ");
-			dumpbn(EC_KEY_get0_private_key(pkey));
-			pend = key_buf;
-			len = i2d_ECPrivateKey(pkey, &pend);
-			printf("Privkey (ASN1): ");
-			dumphex(key_buf, len);
-		}
-
+		printf("\r%79s\r", "");
+		printf("Pattern: %s\n", pattern);
 	}
+	printf("Address: %s\n", addrstr);
+	printf("Privkey: %s\n", pkstr);
 
-	if (!vcp->vc_result_file || (vcp->vc_verbose > 0)) {
-		if (vcp->vc_csv) {
-			if (isscript) {
-				printf(
-				"%s,",
-				addr2_buf);
+	// Guardar en MongoDB si está habilitado
+	if (use_mongodb) {
+		if (!mongo_init(&mongo_ctx, mongo_uri, mongo_db, mongo_collection)) {
+			fprintf(stderr, "Warning: Failed to initialize MongoDB connection\n");
+		} else {
+			if (!mongo_save_address(&mongo_ctx, addrstr, pkstr, pattern)) {
+				fprintf(stderr, "Warning: Failed to save address to MongoDB\n");
 			}
-			else {
-				printf(
-				"%s,",
-				addr_buf);
-			}
-			printf(
-				"%s\n",
-				privkey_buf);
-		}
-		else {
-			if (isscript)
-				printf("P2SH%s Address: %s\n", ticker, addr2_buf);
-			printf("%sAddress: %s\n"
-			       "%s%s: %s\n",
-			       ticker, addr_buf, ticker, keytype, privkey_buf);
+			mongo_cleanup(&mongo_ctx);
 		}
 	}
 
@@ -608,42 +540,20 @@ vg_output_match_console(vg_context_t *vcp, EC_KEY *pkey, const char *pattern)
 			fprintf(stderr,
 				"ERROR: could not open result file: %s\n",
 				strerror(errno));
-		} else {
-			if (vcp->vc_csv) {
-				fprintf(fp,
-					"%.*s,%s,",
-					tickerlength,ticker, pattern);
-				if (isscript) {
-					fprintf(fp,
-					"%s,",
-					addr2_buf);
-				}
-				else {
-					fprintf(fp,
-					"%s,",
-					addr_buf);
-				}
-				fprintf(fp,
-					"%s\n",
-					privkey_buf);
-				fclose(fp);
-			}
-			else {
-				fprintf(fp,
-					"%sPattern: %s\n"
-					, ticker, pattern);
-				if (isscript)
-					fprintf(fp, "P2SH%s Address: %s\n", ticker, addr2_buf);
-				fprintf(fp,
-					"%sAddress: %s\n"
-					"%s%s: %s\n",
-					ticker, addr_buf, ticker, keytype, privkey_buf);
-				fclose(fp);
-			}
+			goto out;
 		}
+		fprintf(fp,
+			"Pattern: %s\n"
+			"Address: %s\n"
+			"Privkey: %s\n",
+			pattern, addrstr, pkstr);
+		fclose(fp);
 	}
-	if (free_ppnt)
-		EC_POINT_free(ppnt);
+out:
+	if (pkstr)
+		free(pkstr);
+	if (addrstr)
+		free(addrstr);
 }
 
 

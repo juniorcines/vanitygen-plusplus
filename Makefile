@@ -48,10 +48,10 @@ all: $(PROGS)
 vanitygen++: vanitygen.o pattern.o util.o groestl.o sha3.o ed25519.o stellar.o base32.o crc16.o simplevanitygen.o bech32.o segwit_addr.o mongo_utils.o
 	$(CC) $^ -o $@ $(CFLAGS) $(LIBS)
 
-oclvanitygen++: oclvanitygen.o oclengine.o pattern.o util.o groestl.o sha3.o
+oclvanitygen++: oclvanitygen.o oclengine.o pattern.o util.o groestl.o sha3.o mongo_utils.o
 	$(CC) $^ -o $@ $(CFLAGS) $(LIBS) $(OPENCL_LIBS)
 
-oclvanityminer: oclvanityminer.o oclengine.o pattern.o util.o groestl.o sha3.o
+oclvanityminer: oclvanityminer.o oclengine.o pattern.o util.o groestl.o sha3.o mongo_utils.o
 	$(CC) $^ -o $@ $(CFLAGS) $(LIBS) $(OPENCL_LIBS) -lcurl
 
 keyconv: keyconv.o util.o groestl.o sha3.o

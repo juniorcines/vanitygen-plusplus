@@ -28,9 +28,19 @@
 #include "oclengine.h"
 #include "pattern.h"
 #include "util.h"
+#include "mongo_utils.h"
 
 #include "ticker.h"
 char ticker[10];
+
+// Variables globales para MongoDB
+const char *mongo_uri = NULL;
+const char *mongo_db = NULL;
+const char *mongo_collection = NULL;
+int use_mongodb = 0;
+
+// Agregar variable global para el contexto de MongoDB
+mongo_context_t mongo_ctx = {0};
 
 int GRSFlag = 0;
 int TRXFlag = 0;
@@ -44,7 +54,7 @@ usage(const char *name)
 {
 	fprintf(stderr,
 "oclVanitygen %s (" OPENSSL_VERSION_TEXT ")\n"
-"Usage: %s [-vqrik1NTS] [-d <device>] [-f <filename>|-] [<pattern>...]\n"
+"Usage: %s [-vqnrik1NTS] [-d <device>] [-f <filename>|-] [<pattern>...]\n"
 "Generates a bitcoin receiving address matching <pattern>, and outputs the\n"
 "address and associated private key.  The private key may be stored in a safe\n"
 "location or imported into a bitcoin client to spend any balance received on\n"
@@ -91,7 +101,12 @@ usage(const char *name)
 "-Z <prefix>   Private key prefix in hex (1Address.io Dapp front-running protection)\n"
 "-l <nbits>    Specify number of bits in prefix, only relevant when -Z is specified\n"
 "-z            Format output of matches in CSV(disables verbose mode)\n"
-"              Output as [COIN],[PREFIX],[ADDRESS],[PRIVKEY]\n",
+"              Output as [COIN],[PREFIX],[ADDRESS],[PRIVKEY]\n"
+"\n"
+"MongoDB Options:\n"
+"-M <uri>      MongoDB connection URI\n"
+"-d <db>       MongoDB database name\n"
+"-c <coll>     MongoDB collection name\n",
 version, name);
 }
 
@@ -145,7 +160,7 @@ main(int argc, char **argv)
 	int i;
 
 	while ((opt = getopt(argc, argv,
-			     "vqrik1zC:X:Y:F:eE:p:P:d:w:t:g:b:VSh?f:o:s:D:Z:a:l:")) != -1) {
+			     "vqnrik1zC:X:Y:F:eE:p:P:D:w:t:g:b:VSh?f:o:s:Z:a:l:M:d:c:")) != -1) {
 		switch (opt) {
 		case 'r':
 			regex = 1;
@@ -246,7 +261,13 @@ main(int argc, char **argv)
 			platformidx = atoi(optarg);
 			break;
 		case 'd':
-			deviceidx = atoi(optarg);
+			if (deviceidx != -1) {
+				// Esta es la opción de dispositivo OpenCL
+				deviceidx = atoi(optarg);
+			} else {
+				// Esta es la opción de base de datos MongoDB
+				mongo_db = optarg;
+			}
 			break;
 		case 'w':
 			worksize = atoi(optarg);
@@ -382,6 +403,13 @@ main(int argc, char **argv)
 				fprintf(stderr, "Invalid number of bits `%s` specified\n", optarg);
 				return 1;
 			}
+			break;
+		case 'M':
+			mongo_uri = optarg;
+			use_mongodb = 1;
+			break;
+		case 'c':
+			mongo_collection = optarg;
 			break;
 		default:
 			usage(argv[0]);

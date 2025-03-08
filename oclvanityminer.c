@@ -33,9 +33,17 @@
 #include "pattern.h"
 #include "util.h"
 #include "avl.h"
+#include "mongo_utils.h"
 
 #include "ticker.h"
 char ticker[10];
+
+// Variables globales para MongoDB
+const char *mongo_uri = NULL;
+const char *mongo_db = NULL;
+const char *mongo_collection = NULL;
+int use_mongodb = 0;
+mongo_context_t mongo_ctx = {0};
 
 char workurl[2048];
 int workurlFlag = 0;

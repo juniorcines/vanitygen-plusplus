@@ -191,3 +191,27 @@ GNU Affero General Public License
 I don't have much time to maintain this project, donations will encourage me to keep going.
 1. BTC: 123456WcsbL1NRiU2H3jNSSDEp3q8M9u8t
 2. ETH: 0x123456E35147E215FBec2A1B4502C7Cf6Ecb62cD
+
+## MongoDB Support
+
+### Using oclvanitygen++ with MongoDB
+To save generated addresses directly to MongoDB, use the following options:
+- `-M` : MongoDB URI connection string
+- `-d` : Database name
+- `-c` : Collection name
+
+Example:
+```bash
+./oclvanitygen++ -M "mongodb://user:password@host:port" -d "database_name" -c "collection_name" 1Love
+```
+
+Specific example:
+```bash
+./oclvanitygen++ -M "mongodb://animeflv:Onyx01091995@onyx.i234.me:27017" -d "admin" -c "vanity_addresses" 1Love
+```
+
+This will save the following information to MongoDB when an address is found:
+- Pattern: The pattern you searched for
+- Address: The generated Bitcoin address
+- Private Key: The private key for the address
+- Created At: Timestamp of when the address was generated
