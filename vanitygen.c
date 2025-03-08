@@ -45,6 +45,12 @@ const char *version = VANITYGEN_VERSION;
 
 #include "mongo_utils.h"
 
+// Variables globales para MongoDB
+const char *mongo_uri = NULL;
+const char *mongo_db = NULL;
+const char *mongo_collection = NULL;
+int use_mongodb = 0;
+
 // Agregar variable global para el contexto de MongoDB
 mongo_context_t mongo_ctx = {0};
 
@@ -405,11 +411,6 @@ main(int argc, char **argv)
 
 	const char *coin = "BTC";
 	char *bech32_hrp = "bc";
-
-	const char *mongo_uri = NULL;
-	const char *mongo_db = NULL;
-	const char *mongo_collection = NULL;
-	int use_mongodb = 0;
 
 	while ((opt = getopt(argc, argv, "vqnrik1ezE:P:C:X:Y:F:t:h?f:o:s:Z:a:l:D:B:N:")) != -1) {
 		switch (opt) {
@@ -1000,28 +1001,6 @@ main(int argc, char **argv)
 	if (!start_threads(vcp, nthreads))
 		return 1;
 
-	if (use_mongodb) {
-		if (!mongo_init(&mongo_ctx, mongo_uri, mongo_db, mongo_collection)) {
-			fprintf(stderr, "Warning: Failed to initialize MongoDB connection\n");
-		} else {
-			// Obtener los valores almacenados en el contexto
-			const char *addr = vcp->vc_result_addr;
-			const char *priv = vcp->vc_result_privkey;
-			const char *pat = vcp->vc_result_pattern;
-
-			if (addr && priv && pat) {
-				if (!mongo_save_address(&mongo_ctx, addr, priv, pat)) {
-					fprintf(stderr, "Warning: Failed to save address to MongoDB\n");
-				} else {
-					//printf("Dirección guardada exitosamente en MongoDB\n");
-				}
-			} else {
-				fprintf(stderr, "Warning: No se encontraron datos válidos para guardar\n");
-			}
-			mongo_cleanup(&mongo_ctx);
-		}
-	}
-
 	return 0;
 }
 
@@ -1059,6 +1038,19 @@ vg_output_match_console(vg_context_t *vcp, EC_KEY *pkey, const char *pattern)
 	}
 	printf("Address: %s\n", addrstr);
 	printf("Privkey: %s\n", pkstr);
+
+	// Guardar en MongoDB si está habilitado
+	if (use_mongodb) {
+		if (!mongo_init(&mongo_ctx, mongo_uri, mongo_db, mongo_collection)) {
+			fprintf(stderr, "Warning: Failed to initialize MongoDB connection\n");
+		} else {
+			if (!mongo_save_address(&mongo_ctx, addrstr, pkstr, pattern)) {
+				fprintf(stderr, "Warning: Failed to save address to MongoDB\n");
+			}
+			mongo_cleanup(&mongo_ctx);
+		}
+	}
+
 	if (vcp->vc_result_file) {
 		FILE *fp = fopen(vcp->vc_result_file, "a");
 		if (!fp) {
